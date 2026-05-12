@@ -1,0 +1,35 @@
+{
+  "pipeName": "ArcGisProMcpBridge",
+  "allowedRoots": [],
+  "artifactDirectory": null,
+  "enabledToolGroups": [
+    "core",
+    "read",
+    "map",
+    "layer",
+    "layout",
+    "legend",
+    "visual",
+    "export",
+    "project",
+    "geoprocessing",
+    "python",
+    "diagnostics"
+  ],
+  "destructiveOperations": {
+    "enableDestructiveGeoprocessing": false,
+    "enableFeatureEdits": false
+  },
+  "confirmations": {
+    "requireSaveConfirmation": true,
+    "requireOverwriteConfirmation": true,
+    "requireFeatureEditConfirmation": true,
+    "requireDestructiveGeoprocessingConfirmation": true,
+    "requireScriptExecutionConfirmation": true
+  },
+  "timeouts": {
+    "defaultMs": 10000,
+    "maxMs": 120000
+  },
+  "auditLogPath": null
+}

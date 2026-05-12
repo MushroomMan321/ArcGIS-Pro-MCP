@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcGisProMcpServer", "ArcGisProMcpServer\ArcGisProMcpServer.csproj", "{54903362-FF0D-46F8-8245-0172F97BAE0E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcGisProBridgeContracts", "ArcGisProBridgeContracts\ArcGisProBridgeContracts.csproj", "{686C72AD-CB13-458A-BDED-0C11F5625CC1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcGisProBridgeAddIn", "ArcGisProBridgeAddIn\ArcGisProBridgeAddIn.csproj", "{48A55C42-E68D-452E-A68E-310359FF1017}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{54903362-FF0D-46F8-8245-0172F97BAE0E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{54903362-FF0D-46F8-8245-0172F97BAE0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{54903362-FF0D-46F8-8245-0172F97BAE0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{54903362-FF0D-46F8-8245-0172F97BAE0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{686C72AD-CB13-458A-BDED-0C11F5625CC1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{686C72AD-CB13-458A-BDED-0C11F5625CC1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{686C72AD-CB13-458A-BDED-0C11F5625CC1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{686C72AD-CB13-458A-BDED-0C11F5625CC1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48A55C42-E68D-452E-A68E-310359FF1017}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48A55C42-E68D-452E-A68E-310359FF1017}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48A55C42-E68D-452E-A68E-310359FF1017}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48A55C42-E68D-452E-A68E-310359FF1017}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

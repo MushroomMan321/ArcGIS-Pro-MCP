@@ -1,0 +1,415 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace ArcGisProBridgeContracts;
+
+public sealed class BridgeConfiguration
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Skip
+    };
+
+    public string PipeName { get; set; } = BridgeDefaults.PipeName;
+
+    public List<string> AllowedRoots { get; set; } = new();
+
+    public string? ArtifactDirectory { get; set; }
+
+    public List<string> EnabledToolGroups { get; set; } = new()
+    {
+        "core",
+        "read",
+        "map",
+        "layer",
+        "layout",
+        "legend",
+        "visual",
+        "export",
+        "project",
+        "geoprocessing",
+        "python",
+        "diagnostics"
+    };
+
+    public BridgeDestructiveOperationPolicy DestructiveOperations { get; set; } = new();
+
+    public BridgeConfirmationPolicy Confirmations { get; set; } = new();
+
+    public BridgeTimeoutPolicy Timeouts { get; set; } = new();
+
+    public string? AuditLogPath { get; set; }
+
+    [JsonIgnore]
+    public string? SourcePath { get; set; }
+
+    public static BridgeConfiguration Load()
+    {
+        var config = new BridgeConfiguration();
+        var path = FindConfigPath();
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        {
+            var loaded = JsonSerializer.Deserialize<BridgeConfiguration>(File.ReadAllText(path), JsonOptions);
+            if (loaded is not null)
+            {
+                config = loaded;
+                config.SourcePath = path;
+            }
+        }
+
+        ApplyEnvironmentOverrides(config);
+        config.Normalize();
+        return config;
+    }
+
+    public string GetAuditLogPath()
+    {
+        if (!string.IsNullOrWhiteSpace(AuditLogPath))
+        {
+            return Path.GetFullPath(Environment.ExpandEnvironmentVariables(AuditLogPath));
+        }
+
+        return Path.Combine(GetDefaultConfigDirectory(), "logs", "audit.jsonl");
+    }
+
+    public string[] GetConfiguredAllowedRoots()
+    {
+        return AllowedRoots
+            .Where(root => !string.IsNullOrWhiteSpace(root))
+            .Select(root => Path.GetFullPath(Environment.ExpandEnvironmentVariables(root)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public string? GetArtifactDirectory()
+    {
+        return string.IsNullOrWhiteSpace(ArtifactDirectory)
+            ? null
+            : Path.GetFullPath(Environment.ExpandEnvironmentVariables(ArtifactDirectory));
+    }
+
+    public bool IsOperationEnabled(string op)
+    {
+        var group = GetToolGroup(op);
+        if (string.IsNullOrWhiteSpace(group))
+        {
+            return true;
+        }
+
+        return EnabledToolGroups.Count == 0
+            || EnabledToolGroups.Contains(group, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static string GetToolGroup(string op)
+    {
+        if (op.StartsWith("pro.", StringComparison.OrdinalIgnoreCase)
+            || op.StartsWith("object.", StringComparison.OrdinalIgnoreCase)
+            || op.StartsWith("artifact.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "core";
+        }
+
+        if (op.StartsWith("project.get_", StringComparison.OrdinalIgnoreCase)
+            || op is "map.list" or "map.get_state" or "layer.list" or "layer.get_state" or "layout.list" or "layout.get_state"
+            || op.StartsWith("legend.get_", StringComparison.OrdinalIgnoreCase))
+        {
+            return "read";
+        }
+
+        if (op.StartsWith("map.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "map";
+        }
+
+        if (op.StartsWith("layer.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "layer";
+        }
+
+        if (op.StartsWith("layout.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "layout";
+        }
+
+        if (op.StartsWith("legend.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "legend";
+        }
+
+        if (op.StartsWith("visual.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "visual";
+        }
+
+        if (op.StartsWith("export.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "export";
+        }
+
+        if (op.StartsWith("project.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "project";
+        }
+
+        if (op.StartsWith("geoprocessing.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "geoprocessing";
+        }
+
+        if (op.StartsWith("python.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "python";
+        }
+
+        if (op.StartsWith("bridge.diagnostics.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "diagnostics";
+        }
+
+        return "core";
+    }
+
+    public static string GetDefaultConfigDirectory()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ArcGISProMcpBridge");
+    }
+
+    public static string GetDefaultConfigPath()
+    {
+        return Path.Combine(GetDefaultConfigDirectory(), "config.json");
+    }
+
+    private static string? FindConfigPath()
+    {
+        var configured = Environment.GetEnvironmentVariable("ARCGIS_PRO_MCP_CONFIG");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return Path.GetFullPath(Environment.ExpandEnvironmentVariables(configured));
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(Environment.CurrentDirectory, "arcgis-pro-mcp.config.json"),
+            Path.Combine(AppContext.BaseDirectory, "arcgis-pro-mcp.config.json"),
+            GetDefaultConfigPath()
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private static void ApplyEnvironmentOverrides(BridgeConfiguration config)
+    {
+        var pipe = Environment.GetEnvironmentVariable("ARCGIS_PRO_MCP_PIPE");
+        if (!string.IsNullOrWhiteSpace(pipe))
+        {
+            config.PipeName = pipe;
+        }
+
+        var allowedRoots = Environment.GetEnvironmentVariable("ARCGIS_PRO_MCP_ALLOWED_ROOTS");
+        if (!string.IsNullOrWhiteSpace(allowedRoots))
+        {
+            config.AllowedRoots = allowedRoots
+                .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+        }
+
+        var artifactDirectory = Environment.GetEnvironmentVariable("ARCGIS_PRO_MCP_ARTIFACT_DIR");
+        if (!string.IsNullOrWhiteSpace(artifactDirectory))
+        {
+            config.ArtifactDirectory = artifactDirectory;
+        }
+
+        var auditLogPath = Environment.GetEnvironmentVariable("ARCGIS_PRO_MCP_AUDIT_LOG");
+        if (!string.IsNullOrWhiteSpace(auditLogPath))
+        {
+            config.AuditLogPath = auditLogPath;
+        }
+
+        if (TryReadIntEnvironment("ARCGIS_PRO_MCP_TIMEOUT_MS", out var defaultTimeoutMs))
+        {
+            config.Timeouts.DefaultMs = defaultTimeoutMs;
+        }
+
+        if (TryReadIntEnvironment("ARCGIS_PRO_MCP_MAX_TIMEOUT_MS", out var maxTimeoutMs))
+        {
+            config.Timeouts.MaxMs = maxTimeoutMs;
+        }
+
+        var destructiveGp = Environment.GetEnvironmentVariable("ARCGIS_PRO_MCP_ENABLE_DESTRUCTIVE_GP");
+        if (!string.IsNullOrWhiteSpace(destructiveGp))
+        {
+            config.DestructiveOperations.EnableDestructiveGeoprocessing = IsTruthy(destructiveGp);
+        }
+    }
+
+    private static bool TryReadIntEnvironment(string name, out int value)
+    {
+        return int.TryParse(Environment.GetEnvironmentVariable(name), out value) && value > 0;
+    }
+
+    private static bool IsTruthy(string value)
+    {
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void Normalize()
+    {
+        if (string.IsNullOrWhiteSpace(PipeName))
+        {
+            PipeName = BridgeDefaults.PipeName;
+        }
+
+        Timeouts.DefaultMs = Timeouts.DefaultMs <= 0 ? BridgeDefaults.DefaultTimeoutMs : Timeouts.DefaultMs;
+        Timeouts.MaxMs = Math.Max(Timeouts.DefaultMs, Timeouts.MaxMs <= 0 ? 120000 : Timeouts.MaxMs);
+        EnabledToolGroups = EnabledToolGroups
+            .Where(group => !string.IsNullOrWhiteSpace(group))
+            .Select(group => group.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+}
+
+public sealed class BridgeDestructiveOperationPolicy
+{
+    public bool EnableDestructiveGeoprocessing { get; set; }
+
+    public bool EnableFeatureEdits { get; set; }
+}
+
+public sealed class BridgeConfirmationPolicy
+{
+    public bool RequireSaveConfirmation { get; set; } = true;
+
+    public bool RequireOverwriteConfirmation { get; set; } = true;
+
+    public bool RequireFeatureEditConfirmation { get; set; } = true;
+
+    public bool RequireDestructiveGeoprocessingConfirmation { get; set; } = true;
+
+    public bool RequireScriptExecutionConfirmation { get; set; } = true;
+}
+
+public sealed class BridgeTimeoutPolicy
+{
+    public int DefaultMs { get; set; } = BridgeDefaults.DefaultTimeoutMs;
+
+    public int MaxMs { get; set; } = 120000;
+}
+
+public static class BridgeAuditLog
+{
+    private static readonly object Lock = new();
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public static void Append(string path, string process, BridgeRequest? request, BridgeResponse response)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            var record = new
+            {
+                timestampUtc = DateTimeOffset.UtcNow,
+                process,
+                id = response.Id,
+                client = request?.Client,
+                op = request?.Op,
+                group = request is null ? null : BridgeConfiguration.GetToolGroup(request.Op),
+                dryRun = request?.DryRun,
+                createdUtc = request?.CreatedUtc,
+                timeoutMs = request?.TimeoutMs,
+                argsSummary = SummarizeArgs(request?.Args),
+                targetIds = ExtractTargetIds(request?.Args),
+                result = new
+                {
+                    ok = response.Ok,
+                    code = response.Error?.Code ?? "ok",
+                    message = response.Error?.Message,
+                    elapsedMs = response.ElapsedMs,
+                    warningCount = response.Warnings.Count,
+                    messageCount = response.Messages.Count
+                },
+                artifacts = response.Artifacts.Select(artifact => new
+                {
+                    artifact.Id,
+                    artifact.Uri,
+                    artifact.Path,
+                    artifact.MimeType,
+                    artifact.SourceObjectId,
+                    artifact.SourceObjectKind,
+                    artifact.SourceObjectName
+                }).ToArray()
+            };
+
+            var line = JsonSerializer.Serialize(record, JsonOptions);
+            lock (Lock)
+            {
+                File.AppendAllText(fullPath, line + Environment.NewLine);
+            }
+        }
+        catch
+        {
+            // Audit logging must not interfere with bridge request handling.
+        }
+    }
+
+    private static IReadOnlyDictionary<string, object?> SummarizeArgs(JsonObjectMap? args)
+    {
+        if (args is null)
+        {
+            return new Dictionary<string, object?>();
+        }
+
+        return args.ToDictionary(
+            item => item.Key,
+            item => SummarizeJson(item.Value),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static object? SummarizeJson(JsonElement value)
+    {
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => Truncate(value.GetString(), 300),
+            JsonValueKind.Number => value.GetRawText(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            JsonValueKind.Array => $"array[{value.GetArrayLength()}]",
+            JsonValueKind.Object => $"object[{value.EnumerateObject().Count()}]",
+            _ => value.ValueKind.ToString()
+        };
+    }
+
+    private static IReadOnlyDictionary<string, object?> ExtractTargetIds(JsonObjectMap? args)
+    {
+        if (args is null)
+        {
+            return new Dictionary<string, object?>();
+        }
+
+        return args
+            .Where(item => item.Key.EndsWith("Id", StringComparison.OrdinalIgnoreCase)
+                || item.Key.EndsWith("Ids", StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(
+                item => item.Key,
+                item => SummarizeJson(item.Value),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? Truncate(string? value, int maxLength)
+    {
+        if (value is null || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength] + "...";
+    }
+}

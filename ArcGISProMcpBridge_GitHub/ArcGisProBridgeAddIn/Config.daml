@@ -1,0 +1,29 @@
+<ArcGIS defaultAssembly="ArcGisProBridgeAddIn.dll" defaultNamespace="ArcGisProBridgeAddIn" xmlns="http://schemas.esri.com/DADF/Registry" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
+  <AddInInfo id="{D7411AC6-7408-4979-98D2-22F1C10D0B1C}" version="0.1.0" desktopVersion="3.5.0" product="ArcGISPro">
+    <Name>ArcGIS Pro MCP Bridge</Name>
+    <Description>Local bridge service that exposes ArcGIS Pro status and operations to an MCP server.</Description>
+    <Author>ArcGIS Pro MCP Bridge Contributors</Author>
+    <Company>ArcGIS Pro MCP Bridge Contributors</Company>
+    <Date>2026-05-05</Date>
+    <Subject>Framework</Subject>
+  </AddInInfo>
+  <modules>
+    <insertModule id="ArcGisProBridgeAddIn_Module" className="Module1" autoLoad="true" caption="ArcGIS Pro MCP Bridge">
+      <tabs>
+        <tab id="ArcGisProBridgeAddIn_Tab" caption="MCP Bridge">
+          <group refID="ArcGisProBridgeAddIn_Group"/>
+        </tab>
+      </tabs>
+      <groups>
+        <group id="ArcGisProBridgeAddIn_Group" caption="Bridge" appearsOnAddInTab="true">
+          <button refID="ArcGisProBridgeAddIn_StatusButton" size="large" />
+        </group>
+      </groups>
+      <controls>
+        <button id="ArcGisProBridgeAddIn_StatusButton" caption="Bridge Status" className="StatusButton" loadOnClick="true" smallImage="GenericButtonBlue16" largeImage="GenericButtonBlue32">
+          <tooltip heading="ArcGIS Pro MCP Bridge">Shows the local MCP bridge status.<disabledText /></tooltip>
+        </button>
+      </controls>
+    </insertModule>
+  </modules>
+</ArcGIS>
