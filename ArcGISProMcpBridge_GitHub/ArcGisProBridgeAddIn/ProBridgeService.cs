@@ -2025,6 +2025,19 @@ internal sealed class ProBridgeService : IDisposable
         }
     }
 
+    private static Task<T> RunOnUiThreadAsync<T>(Func<Task<T>> action)
+    {
+        // Project.SaveAsync/SaveAsAsync must run on the ArcGIS Pro GUI thread; calling them
+        // from a QueuedTask worker throws a WPF thread-affinity InvalidOperationException.
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            return action();
+        }
+
+        return dispatcher.InvokeAsync(action).Task.Unwrap();
+    }
+
     private async Task<BridgeResponse> HandleProjectSaveAsync(BridgeRequest request, Stopwatch stopwatch, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -2061,7 +2074,7 @@ internal sealed class ProBridgeService : IDisposable
 
         try
         {
-            var saved = await QueuedTask.Run(async () =>
+            var saved = await RunOnUiThreadAsync(() =>
             {
                 var project = Project.Current;
                 if (project is null)
@@ -2069,7 +2082,7 @@ internal sealed class ProBridgeService : IDisposable
                     throw new InvalidOperationException("No ArcGIS Pro project is loaded.");
                 }
 
-                return await project.SaveAsync();
+                return project.SaveAsync();
             });
             var after = await QueuedTask.Run(() =>
             {
@@ -2165,7 +2178,7 @@ internal sealed class ProBridgeService : IDisposable
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(preflight.Path!)!);
-            var saved = await QueuedTask.Run(async () =>
+            var saved = await RunOnUiThreadAsync(() =>
             {
                 var project = Project.Current;
                 if (project is null)
@@ -2173,7 +2186,7 @@ internal sealed class ProBridgeService : IDisposable
                     throw new InvalidOperationException("No ArcGIS Pro project is loaded.");
                 }
 
-                return await project.SaveAsAsync(preflight.Path!, overwrite);
+                return project.SaveAsAsync(preflight.Path!, overwrite);
             });
             var after = await QueuedTask.Run(() =>
             {
