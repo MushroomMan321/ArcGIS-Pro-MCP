@@ -8,7 +8,7 @@ namespace ArcGisProMcpServer.Tools;
 [McpServerToolType]
 public static class ExportTools
 {
-    [McpServerTool(Name = "export.layout"), Description("Export a layout to PNG or PDF.")]
+    [McpServerTool(Name = "export_layout"), Description("Export a layout to PNG or PDF.")]
     public static Task<CallToolResult> ExportLayout(
         BridgeInvoker bridge,
         [Description("Output path.")] string outputPath,

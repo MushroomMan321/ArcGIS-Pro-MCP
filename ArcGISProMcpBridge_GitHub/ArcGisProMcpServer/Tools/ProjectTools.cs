@@ -8,7 +8,7 @@ namespace ArcGisProMcpServer.Tools;
 [McpServerToolType]
 public static class ProjectTools
 {
-    [McpServerTool(Name = "project.get_current", ReadOnly = true), Description("Inspect the current ArcGIS Pro project.")]
+    [McpServerTool(Name = "project_get_current", ReadOnly = true), Description("Inspect the current ArcGIS Pro project.")]
     public static Task<CallToolResult> GetCurrent(
         BridgeInvoker bridge,
         [Description("Optional bridge request timeout in milliseconds.")] int? timeoutMs = null,
@@ -17,7 +17,7 @@ public static class ProjectTools
         return bridge.InvokeToolAsync("project.get_current", timeoutMs: timeoutMs, cancellationToken: cancellationToken);
     }
 
-    [McpServerTool(Name = "project.save"), Description("Save the current ArcGIS Pro project.")]
+    [McpServerTool(Name = "project_save"), Description("Save the current ArcGIS Pro project.")]
     public static Task<CallToolResult> Save(
         BridgeInvoker bridge,
         [Description("Required for non-dry-run saves when save confirmation is enabled.")] bool confirmSave = false,
@@ -28,7 +28,7 @@ public static class ProjectTools
         return bridge.InvokeToolAsync("project.save", new { confirmSave }, timeoutMs: timeoutMs, dryRun: dryRun, cancellationToken: cancellationToken);
     }
 
-    [McpServerTool(Name = "project.save_copy"), Description("Save a copy of the current ArcGIS Pro project.")]
+    [McpServerTool(Name = "project_save_copy"), Description("Save a copy of the current ArcGIS Pro project.")]
     public static Task<CallToolResult> SaveCopy(
         BridgeInvoker bridge,
         [Description("Output .aprx path.")] string path,

@@ -8,7 +8,7 @@ namespace ArcGisProMcpServer.Tools;
 [McpServerToolType]
 public static class PythonTools
 {
-    [McpServerTool(Name = "python.run_arcpy_script"), Description("Run an allowed ArcPy .py script through ArcGIS Pro geoprocessing so CURRENT project workflows can work.")]
+    [McpServerTool(Name = "python_run_arcpy_script"), Description("Run an allowed ArcPy .py script through ArcGIS Pro geoprocessing so CURRENT project workflows can work.")]
     public static Task<CallToolResult> RunArcPyScript(
         BridgeInvoker bridge,
         [Description("Path to an existing .py script under an allowed root.")] string scriptPath,
@@ -23,7 +23,15 @@ public static class PythonTools
     {
         return bridge.InvokeToolAsync(
             "python.run_arcpy_script",
-            new { scriptPath, arguments, workingDirectory, outputDirectory, syntaxOnly, confirmScriptExecution },
+            new
+            {
+                scriptPath,
+                arguments = JsonArgumentNormalizer.Normalize(arguments),
+                workingDirectory,
+                outputDirectory,
+                syntaxOnly,
+                confirmScriptExecution
+            },
             timeoutMs,
             dryRun,
             includeImageArtifacts: true,

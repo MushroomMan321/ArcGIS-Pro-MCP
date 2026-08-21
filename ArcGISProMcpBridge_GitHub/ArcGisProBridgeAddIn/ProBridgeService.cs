@@ -27,6 +27,8 @@ internal sealed class ProBridgeService : IDisposable
     private readonly SemaphoreSlim _operationQueue = new(1, 1);
     private readonly object _logLock = new();
     private readonly SessionObjectRegistry _objectRegistry = new();
+    private readonly object _runnerToolboxLock = new();
+    private readonly HashSet<string> _runnerToolboxesRefreshed = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _logPath;
     private readonly string _auditLogPath;
     private CancellationTokenSource? _cts;
@@ -2809,7 +2811,7 @@ internal sealed class ProBridgeService : IDisposable
         {
             Directory.CreateDirectory(Path.GetDirectoryName(preflight.ToolboxPath!)!);
             Directory.CreateDirectory(Path.GetDirectoryName(preflight.ManifestPath!)!);
-            File.WriteAllText(preflight.ToolboxPath!, BuildArcpyRunnerToolbox(), new UTF8Encoding(false));
+            EnsureArcpyRunnerToolbox(preflight.ToolboxPath!);
         }
         catch (Exception ex)
         {
@@ -4307,7 +4309,7 @@ internal sealed class ProBridgeService : IDisposable
         var toolboxPath = Path.Combine(
             artifactRoot,
             "arcpy_runner",
-            $"ArcPyRunner_{safeRequestId}.pyt");
+            "ArcPyRunner.pyt");
         checkedPaths.Add(manifestPath);
         checkedPaths.Add(toolboxPath);
 
@@ -4462,6 +4464,29 @@ internal sealed class ProBridgeService : IDisposable
             .ToArray())
             .Trim('_');
         return string.IsNullOrWhiteSpace(safe) ? "item" : safe;
+    }
+
+    // ArcGIS Pro keys its trusted-toolbox list (%LOCALAPPDATA%\ESRI\ArcGISPro\Geoprocessing\.access_pyt)
+    // on the toolbox path plus its last-write time, so rewriting a byte-identical file still re-raises the
+    // "third-party code" prompt. Rewrite once per session to prompt the user a single time, then leave the
+    // file untouched so every later request reuses the approval.
+    private void EnsureArcpyRunnerToolbox(string toolboxPath)
+    {
+        var content = BuildArcpyRunnerToolbox();
+        var encoding = new UTF8Encoding(false);
+
+        lock (_runnerToolboxLock)
+        {
+            var firstUseThisSession = _runnerToolboxesRefreshed.Add(toolboxPath);
+            if (!firstUseThisSession
+                && File.Exists(toolboxPath)
+                && string.Equals(File.ReadAllText(toolboxPath, encoding), content, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            File.WriteAllText(toolboxPath, content, encoding);
+        }
     }
 
     private static string BuildArcpyRunnerToolbox()

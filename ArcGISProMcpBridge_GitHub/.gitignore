@@ -1,0 +1,12 @@
+# Build output
+bin/
+obj/
+
+# Machine-specific published server (see scripts/publish-server.ps1)
+publish/
+
+# Add-in packages
+*.esriAddinX
+
+# Local bridge overrides
+arcgis-pro-mcp.config.local.json

@@ -32,7 +32,7 @@ runs without giving the agent unrestricted access to ArcGIS Pro.
 
 - Windows.
 - ArcGIS Pro 3.x.
-- .NET 8 SDK.
+- A .NET SDK matching the ArcGIS Pro release (see below).
 - PowerShell.
 - Visual Studio with the ArcGIS Pro SDK for the normal add-in build workflow.
 
@@ -40,6 +40,33 @@ The MCP server can be built with the .NET CLI. The ArcGIS Pro add-in can be
 compiled with the .NET CLI, but normal Esri add-in packaging is best done with
 Visual Studio and the ArcGIS Pro SDK. A PowerShell fallback packaging script is
 included.
+
+### ArcGIS Pro version and .NET runtime
+
+The add-in is loaded into the ArcGIS Pro process, so it must target the same .NET
+runtime that Pro runs on, and that changed across Pro releases:
+
+| ArcGIS Pro | .NET runtime | Add-in target framework |
+| ---------- | ------------ | ----------------------- |
+| 3.5, 3.6   | .NET 8       | `net8.0-windows8.0`     |
+| 3.7        | .NET 10      | `net10.0-windows`       |
+
+`Directory.Build.props` resolves both the ArcGIS Pro install directory and the
+add-in target framework automatically:
+
+- The install directory is read from `HKCU`/`HKLM` `SOFTWARE\ESRI\ArcGISPro`, so
+  per-user installs (under `%LOCALAPPDATA%\Programs\ArcGIS\Pro`) work as well as
+  per-machine installs under `C:\Program Files`.
+- The target framework is read back from Pro's own `ArcGISPro.runtimeconfig.json`.
+
+Override either one if detection fails:
+
+```powershell
+dotnet build ArcGISProMcpBridge.sln -p:ArcGISProInstallDir="D:\ArcGIS\Pro\" -p:ArcGISProAddInTargetFramework=net8.0-windows8.0
+```
+
+The MCP server itself targets `net8.0` and runs on any newer installed runtime,
+so it does not need to track the Pro version.
 
 ## Quick Start
 
@@ -99,6 +126,57 @@ The included config uses conservative defaults:
   require explicit confirmation flags
 - timeouts and enabled tool groups are configurable
 
+## Audit Log
+
+The bridge writes one JSON line per operation to an audit log. Logging is **on by
+default**: leaving `auditLogPath` set to `null` does not disable it, it selects
+`%LOCALAPPDATA%\ArcGISProMcpBridge\logs\audit.jsonl`. Set the path explicitly, or
+override it with `ARCGIS_PRO_MCP_AUDIT_LOG`, to write somewhere else.
+
+Both the MCP server and the ArcGIS Pro add-in append to the log independently, so
+each operation is attested twice: once by the process that sent it and once by the
+process that executed it.
+
+Each record includes:
+
+- `timestampUtc`, `op`, `group`, `dryRun`, `client`, and elapsed time
+- `actor` - the Windows user, domain, machine, and process ID that ran the operation
+- `argsSummary` - arguments, with `argsFidelity` recording whether they were
+  summarized or captured verbatim
+- `targetIds` - the object IDs the operation acted on
+- `result` - success or the error code, including operations refused by the
+  configured tool groups, confirmations, or destructive-operation policy
+- `artifacts` - any exports or previews produced, with their paths
+
+### Argument fidelity
+
+Arguments are summarized by default: strings are truncated at 300 characters and
+arrays and objects are reduced to their element counts. Arguments that *are* the
+action rather than a handle to one are recorded verbatim instead, up to 20,000
+characters. That covers every `geoprocessing.*` and `python.*` operation, plus
+argument keys such as `definitionQuery`, `parameters`, `environments`,
+`arguments`, `expression`, `sql`, and `whereClause` wherever they appear.
+
+This matters for reconstruction: `analysis.Buffer` recorded as `parameters:
+object[3]` does not tell you what ran, while the full parameter list does.
+
+### ArcPy script integrity
+
+`python.run_arcpy_script` takes a script path, and that file can change after it
+runs. The audit record therefore captures the script's SHA-256, byte length, and
+last write time at execution time, and archives a content-addressed copy under
+`<audit-log-directory>/audit-scripts/<sha256>.py`. Scripts larger than 1 MB are
+hashed but not archived. A later edit to the original script leaves the archived
+copy intact, so the log can still produce the code that actually ran.
+
+### Limitations
+
+Audit writes fail silently by design so that logging cannot break a bridge
+request. Contended appends are retried, but a persistent failure - a full disk or
+a permissions problem - drops the record without surfacing an error. The log is
+also plain appended JSONL in a user-writable location, so it is not tamper
+evident. Treat it as a best-effort record, not a sealed one.
+
 ## MCP Client Example
 
 After publishing the server, configure your MCP client with the generated
@@ -120,6 +198,39 @@ executable and config path:
 ```
 
 For development, use `.mcp.json` from the repository root.
+
+### Claude Code
+
+Claude Code can register the published server directly:
+
+```powershell
+claude mcp add arcgis-pro --scope user `
+  --env "ARCGIS_PRO_MCP_CONFIG=C:\path\to\publish\ArcGisProMcpServer\arcgis-pro-mcp.config.json" `
+  -- "C:\path\to\publish\ArcGisProMcpServer\ArcGisProMcpServer.exe"
+```
+
+Verify with `claude mcp list`, which reports the server as connected once it
+responds to an MCP handshake. `pro_ping` works without ArcGIS Pro running, so it
+is the quickest end-to-end check.
+
+## Client Compatibility
+
+The server speaks plain MCP over stdio and depends on no vendor SDK, so it works
+with any MCP client. One naming detail governs portability:
+
+**Tool and prompt names use underscores, not dots** - `pro_ping`, not `pro.ping`.
+
+Dots are legal in the MCP spec, but Anthropic's API constrains tool names to
+`^[a-zA-Z0-9_-]{1,64}$` and rejects dotted names outright. Claude Code also
+prefixes MCP tools as `mcp__<server>__<tool>`, and that prefixed form has to fit
+inside the same 64-character limit. OpenAI enforces the same character class.
+Underscore names therefore satisfy both vendors, whereas dotted names only work
+on clients that silently sanitize them.
+
+This applies only to the MCP surface. The named-pipe protocol between the server
+and the ArcGIS Pro add-in still uses dotted operation names (`pro.health`,
+`map.list`), and so do bridge error codes and the `enabledToolGroups` config
+gating. Renaming a tool does not require touching the add-in.
 
 ## Agent Prompt
 
@@ -144,17 +255,16 @@ or layout/export automation, consult docs/arcpy-mapmaking-guide.md first.
 2. Package and register the add-in.
 3. Restart ArcGIS Pro.
 4. Start or publish the MCP server.
-5. Call `pro.ping`; it should return `pong` without needing ArcGIS Pro.
+5. Call `pro_ping`; it should return `pong` without needing ArcGIS Pro.
 6. Open ArcGIS Pro with the add-in loaded.
-7. Call `pro.health`; it should return bridge and project status.
-8. Call `project.get_current`, `map.list`, `layer.list`, or `layout.list`.
-9. Call `visual.capture_active_view` or `visual.export_layout_preview` to verify
+7. Call `pro_health`; it should return bridge and project status.
+8. Call `project_get_current`, `map_list`, `layer_list`, or `layout_list`.
+9. Call `visual_capture_active_view` or `visual_export_layout_preview` to verify
    image artifact output.
 
 ## Documentation
 
 - `docs/arcpy-mapmaking-guide.md` - ArcGIS Pro-first ArcPy guidance for agents.
-- `ArcMCP.md` - development notes and implementation history.
 
 ## Safety Model
 
@@ -167,4 +277,16 @@ or ArcPy script execution.
 
 ## License
 
-Licensed under the Apache License 2.0. See `LICENSE`.
+Free for noncommercial use under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). That covers personal use and
+evaluation, nonprofits, educational and research institutions, and government
+agencies, including state, county, and municipal GIS departments, regardless of
+how that work is funded.
+
+Commercial use requires a separate paid license. That includes consultancies
+using the bridge on billable client work, producing map or data deliverables you
+sell, embedding it in a commercial product or service, and for-profit internal
+use. Evaluating it is always free.
+
+See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for the details and how to
+get in touch.

@@ -1,0 +1,47 @@
+<Project>
+
+  <!--
+    Resolve the ArcGIS Pro install directory instead of assuming C:\Program Files\ArcGIS\Pro.
+    ArcGIS Pro can be installed per-machine (HKLM) or per-user (HKCU), and the per-user
+    location lives under %LOCALAPPDATA%\Programs\ArcGIS\Pro. Override on the command line
+    with -p:ArcGISProInstallDir=... if the registry lookup does not find your install.
+  -->
+  <PropertyGroup Condition="'$(ArcGISProInstallDir)' == ''">
+    <ArcGISProInstallDir>$([MSBuild]::GetRegistryValueFromView('HKEY_CURRENT_USER\SOFTWARE\ESRI\ArcGISPro', 'InstallDir', null, RegistryView.Registry64, RegistryView.Registry32))</ArcGISProInstallDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ArcGISProInstallDir)' == ''">
+    <ArcGISProInstallDir>$([MSBuild]::GetRegistryValueFromView('HKEY_LOCAL_MACHINE\SOFTWARE\ESRI\ArcGISPro', 'InstallDir', null, RegistryView.Registry64, RegistryView.Registry32))</ArcGISProInstallDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ArcGISProInstallDir)' == '' AND Exists('$(LOCALAPPDATA)\Programs\ArcGIS\Pro\bin\ArcGIS.Core.dll')">
+    <ArcGISProInstallDir>$(LOCALAPPDATA)\Programs\ArcGIS\Pro\</ArcGISProInstallDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ArcGISProInstallDir)' == ''">
+    <ArcGISProInstallDir>$(ProgramFiles)\ArcGIS\Pro\</ArcGISProInstallDir>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ArcGISProInstallDir>$([MSBuild]::EnsureTrailingSlash('$(ArcGISProInstallDir)'))</ArcGISProInstallDir>
+    <ArcGISProBinDir>$(ArcGISProInstallDir)bin\</ArcGISProBinDir>
+  </PropertyGroup>
+
+  <!--
+    The add-in is loaded into the ArcGIS Pro process, so it must target the same .NET
+    runtime Pro itself runs on. That moved with the Pro version: 3.5/3.6 are .NET 8,
+    3.7 is .NET 10. Read it back from Pro's own runtimeconfig instead of hardcoding,
+    and fall back to net8.0 when Pro cannot be found. Override with
+    -p:ArcGISProAddInTargetFramework=... if needed.
+  -->
+  <PropertyGroup Condition="'$(ArcGISProAddInTargetFramework)' == '' AND Exists('$(ArcGISProBinDir)ArcGISPro.runtimeconfig.json')">
+    <_ArcGISProRuntimeConfig>$([System.IO.File]::ReadAllText('$(ArcGISProBinDir)ArcGISPro.runtimeconfig.json'))</_ArcGISProRuntimeConfig>
+    <ArcGISProAddInTargetFramework Condition="$(_ArcGISProRuntimeConfig.Contains('net10.0'))">net10.0-windows</ArcGISProAddInTargetFramework>
+    <ArcGISProAddInTargetFramework Condition="$(_ArcGISProRuntimeConfig.Contains('net9.0'))">net9.0-windows</ArcGISProAddInTargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ArcGISProAddInTargetFramework)' == ''">
+    <ArcGISProAddInTargetFramework>net8.0-windows8.0</ArcGISProAddInTargetFramework>
+  </PropertyGroup>
+
+</Project>

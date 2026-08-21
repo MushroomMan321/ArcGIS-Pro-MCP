@@ -8,7 +8,7 @@ namespace ArcGisProMcpServer.Tools;
 [McpServerToolType]
 public static class ProTools
 {
-    [McpServerTool(Name = "pro.ping", ReadOnly = true), Description("Ping test for the MCP server only. Does not require ArcGIS Pro.")]
+    [McpServerTool(Name = "pro_ping", ReadOnly = true), Description("Ping test for the MCP server only. Does not require ArcGIS Pro.")]
     public static object Ping()
     {
         return new
@@ -19,7 +19,7 @@ public static class ProTools
         };
     }
 
-    [McpServerTool(Name = "pro.health", ReadOnly = true), Description("Get ArcGIS Pro bridge health and current project/view status.")]
+    [McpServerTool(Name = "pro_health", ReadOnly = true), Description("Get ArcGIS Pro bridge health and current project/view status.")]
     public static Task<CallToolResult> Health(
         BridgeInvoker bridge,
         [Description("Optional bridge request timeout in milliseconds.")] int? timeoutMs = null,

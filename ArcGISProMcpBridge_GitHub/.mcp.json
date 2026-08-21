@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "arcgis-pro": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "ArcGisProMcpServer/ArcGisProMcpServer.csproj",
+        "--configuration",
+        "Release"
+      ],
+      "env": {
+        "ARCGIS_PRO_MCP_CONFIG": "arcgis-pro-mcp.config.json"
+      }
+    }
+  }
+}

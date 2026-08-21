@@ -8,7 +8,7 @@ namespace ArcGisProMcpServer.Tools;
 [McpServerToolType]
 public static class GeoprocessingTools
 {
-    [McpServerTool(Name = "geoprocessing.execute_tool"), Description("Execute a guarded ArcGIS Pro geoprocessing tool.")]
+    [McpServerTool(Name = "geoprocessing_execute_tool"), Description("Execute a guarded ArcGIS Pro geoprocessing tool.")]
     public static Task<CallToolResult> ExecuteTool(
         BridgeInvoker bridge,
         [Description("Geoprocessing tool name, for example management.Buffer.")] string toolName,
@@ -23,7 +23,15 @@ public static class GeoprocessingTools
     {
         return bridge.InvokeToolAsync(
             "geoprocessing.execute_tool",
-            new { toolName, parameters, environments, addOutputsToMap, allowDestructive, confirmDestructive },
+            new
+            {
+                toolName,
+                parameters = JsonArgumentNormalizer.Normalize(parameters),
+                environments = JsonArgumentNormalizer.Normalize(environments),
+                addOutputsToMap,
+                allowDestructive,
+                confirmDestructive
+            },
             timeoutMs,
             dryRun,
             cancellationToken: cancellationToken);

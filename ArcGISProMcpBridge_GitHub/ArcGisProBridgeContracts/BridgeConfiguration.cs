@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
 
 namespace ArcGisProBridgeContracts;
 
@@ -304,28 +305,65 @@ public sealed class BridgeTimeoutPolicy
 
 public static class BridgeAuditLog
 {
+    private const int DefaultMaxStringLength = 300;
+    private const int FullFidelityMaxLength = 20000;
+    private const long MaxArchivedScriptBytes = 1024 * 1024;
+    private const int AppendAttempts = 5;
+
     private static readonly object Lock = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static readonly string? ActorUser = ReadEnvironmentValue(() => Environment.UserName);
+    private static readonly string? ActorDomain = ReadEnvironmentValue(() => Environment.UserDomainName);
+    private static readonly string? ActorMachine = ReadEnvironmentValue(() => Environment.MachineName);
+
+    // Argument keys that carry the action itself rather than a handle to it. These are recorded
+    // verbatim regardless of operation so the log records what actually ran.
+    private static readonly HashSet<string> FullFidelityKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "definitionQuery",
+        "parameters",
+        "environments",
+        "arguments",
+        "scriptPath",
+        "workingDirectory",
+        "outputDirectory",
+        "expression",
+        "sql",
+        "whereClause"
+    };
 
     public static void Append(string path, string process, BridgeRequest? request, BridgeResponse response)
     {
         try
         {
             var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            var directory = Path.GetDirectoryName(fullPath)!;
+            Directory.CreateDirectory(directory);
+
+            var fullFidelity = request is not null && RequiresFullFidelity(request.Op);
             var record = new
             {
                 timestampUtc = DateTimeOffset.UtcNow,
                 process,
                 id = response.Id,
                 client = request?.Client,
+                actor = new
+                {
+                    user = ActorUser,
+                    domain = ActorDomain,
+                    machine = ActorMachine,
+                    processId = Environment.ProcessId
+                },
                 op = request?.Op,
                 group = request is null ? null : BridgeConfiguration.GetToolGroup(request.Op),
                 dryRun = request?.DryRun,
                 createdUtc = request?.CreatedUtc,
                 timeoutMs = request?.TimeoutMs,
-                argsSummary = SummarizeArgs(request?.Args),
+                argsFidelity = request is null ? null : (fullFidelity ? "full" : "summary"),
+                argsSummary = SummarizeArgs(request?.Args, fullFidelity),
                 targetIds = ExtractTargetIds(request?.Args),
+                script = DescribeScript(request, directory),
                 result = new
                 {
                     ok = response.Ok,
@@ -347,11 +385,7 @@ public static class BridgeAuditLog
                 }).ToArray()
             };
 
-            var line = JsonSerializer.Serialize(record, JsonOptions);
-            lock (Lock)
-            {
-                File.AppendAllText(fullPath, line + Environment.NewLine);
-            }
+            AppendLine(fullPath, JsonSerializer.Serialize(record, JsonOptions));
         }
         catch
         {
@@ -359,7 +393,15 @@ public static class BridgeAuditLog
         }
     }
 
-    private static IReadOnlyDictionary<string, object?> SummarizeArgs(JsonObjectMap? args)
+    // Operations whose arguments are the executed action itself, not a reference to an object.
+    private static bool RequiresFullFidelity(string op)
+    {
+        var group = BridgeConfiguration.GetToolGroup(op);
+        return string.Equals(group, "python", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(group, "geoprocessing", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyDictionary<string, object?> SummarizeArgs(JsonObjectMap? args, bool fullFidelity)
     {
         if (args is null)
         {
@@ -368,15 +410,23 @@ public static class BridgeAuditLog
 
         return args.ToDictionary(
             item => item.Key,
-            item => SummarizeJson(item.Value),
+            item => SummarizeJson(item.Value, fullFidelity || FullFidelityKeys.Contains(item.Key)),
             StringComparer.OrdinalIgnoreCase);
     }
 
-    private static object? SummarizeJson(JsonElement value)
+    private static object? SummarizeJson(JsonElement value, bool full = false)
     {
+        if (full)
+        {
+            var raw = value.GetRawText();
+            return raw.Length <= FullFidelityMaxLength
+                ? value
+                : new { truncated = true, rawLength = raw.Length, preview = raw[..FullFidelityMaxLength] };
+        }
+
         return value.ValueKind switch
         {
-            JsonValueKind.String => Truncate(value.GetString(), 300),
+            JsonValueKind.String => Truncate(value.GetString(), DefaultMaxStringLength),
             JsonValueKind.Number => value.GetRawText(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
@@ -401,6 +451,135 @@ public static class BridgeAuditLog
                 item => item.Key,
                 item => SummarizeJson(item.Value),
                 StringComparer.OrdinalIgnoreCase);
+    }
+
+    // A script path alone does not establish what ran, because the file can change afterwards.
+    // Hash the contents at execution time and keep a content-addressed copy beside the log.
+    private static object? DescribeScript(BridgeRequest? request, string auditDirectory)
+    {
+        if (request?.Args is null
+            || !string.Equals(BridgeConfiguration.GetToolGroup(request.Op), "python", StringComparison.OrdinalIgnoreCase)
+            || !TryGetStringArgument(request.Args, "scriptPath", out var scriptPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var resolved = Path.GetFullPath(Environment.ExpandEnvironmentVariables(scriptPath));
+            if (!File.Exists(resolved))
+            {
+                return new { path = resolved, exists = false };
+            }
+
+            var info = new FileInfo(resolved);
+            var content = File.ReadAllBytes(resolved);
+            var sha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+
+            return new
+            {
+                path = resolved,
+                exists = true,
+                bytes = info.Length,
+                lastWriteUtc = info.LastWriteTimeUtc,
+                sha256,
+                archivedCopy = content.LongLength <= MaxArchivedScriptBytes
+                    ? ArchiveScript(auditDirectory, sha256, resolved, content)
+                    : null
+            };
+        }
+        catch (Exception ex)
+        {
+            return new { path = scriptPath, error = ex.GetType().Name };
+        }
+    }
+
+    private static string? ArchiveScript(string auditDirectory, string sha256, string sourcePath, byte[] content)
+    {
+        try
+        {
+            var archiveDirectory = Path.Combine(auditDirectory, "audit-scripts");
+            Directory.CreateDirectory(archiveDirectory);
+
+            var extension = Path.GetExtension(sourcePath);
+            if (string.IsNullOrWhiteSpace(extension) || extension.Length > 8)
+            {
+                extension = ".py";
+            }
+
+            var target = Path.Combine(archiveDirectory, sha256 + extension);
+            if (!File.Exists(target))
+            {
+                File.WriteAllBytes(target, content);
+            }
+
+            return target;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetStringArgument(JsonObjectMap args, string key, out string value)
+    {
+        foreach (var item in args)
+        {
+            if (!string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (item.Value.ValueKind == JsonValueKind.String)
+            {
+                var text = item.Value.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    value = text;
+                    return true;
+                }
+            }
+
+            break;
+        }
+
+        value = string.Empty;
+        return false;
+    }
+
+    // The MCP server and the add-in append to this file from separate processes, so an
+    // in-process lock alone does not prevent records being lost to sharing violations.
+    private static void AppendLine(string fullPath, string line)
+    {
+        lock (Lock)
+        {
+            for (var attempt = 0; attempt < AppendAttempts; attempt++)
+            {
+                try
+                {
+                    using var stream = new FileStream(fullPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                    using var writer = new StreamWriter(stream);
+                    writer.WriteLine(line);
+                    return;
+                }
+                catch (IOException) when (attempt < AppendAttempts - 1)
+                {
+                    Thread.Sleep(20 * (attempt + 1));
+                }
+            }
+        }
+    }
+
+    private static string? ReadEnvironmentValue(Func<string> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string? Truncate(string? value, int maxLength)
