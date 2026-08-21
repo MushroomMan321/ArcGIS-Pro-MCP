@@ -41,6 +41,8 @@ public sealed class BridgeConfiguration
 
     public BridgeTimeoutPolicy Timeouts { get; set; } = new();
 
+    public ClaudePaneOptions ClaudePane { get; set; } = new();
+
     public string? AuditLogPath { get; set; }
 
     [JsonIgnore]
@@ -273,6 +275,25 @@ public sealed class BridgeConfiguration
             .Select(group => group.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        // An explicit "claudePane": null in the config file deserializes to null
+        // despite the property initialiser, so fall back rather than fault the
+        // add-in at startup.
+        if (ClaudePane is null)
+        {
+            ClaudePane = new ClaudePaneOptions();
+        }
+
+        if (string.IsNullOrWhiteSpace(ClaudePane.FontFamily))
+        {
+            ClaudePane.FontFamily = "Cascadia Mono, Consolas, monospace";
+        }
+
+        ClaudePane.FontSize = ClaudePane.FontSize is <= 0 or > 72 ? 13 : ClaudePane.FontSize;
+        ClaudePane.LineHeight = ClaudePane.LineHeight is < 1 or > 3 ? 1.35 : ClaudePane.LineHeight;
+        ClaudePane.Arguments = ClaudePane.Arguments?
+            .Where(argument => !string.IsNullOrWhiteSpace(argument))
+            .ToList() ?? new List<string>();
     }
 }
 
@@ -301,6 +322,49 @@ public sealed class BridgeTimeoutPolicy
     public int DefaultMs { get; set; } = BridgeDefaults.DefaultTimeoutMs;
 
     public int MaxMs { get; set; } = 120000;
+}
+
+/// <summary>
+/// Settings for the Claude dock pane hosted inside ArcGIS Pro. Only the add-in
+/// reads these; the MCP server ignores the section.
+/// </summary>
+public sealed class ClaudePaneOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Full path to the Claude Code executable. Left empty, the add-in searches
+    /// PATH and the usual npm and native install locations.
+    /// </summary>
+    public string? ExecutablePath { get; set; }
+
+    /// <summary>
+    /// Full path to the published ArcGisProMcpServer executable, used to
+    /// generate the MCP config the pane hands to Claude Code.
+    /// </summary>
+    public string? ServerPath { get; set; }
+
+    /// <summary>
+    /// Working directory for the session. Left empty, the pane uses the home
+    /// folder of the open ArcGIS Pro project so Claude Code starts where the
+    /// user's data is.
+    /// </summary>
+    public string? WorkingDirectory { get; set; }
+
+    /// <summary>Extra command line arguments appended to the Claude Code launch.</summary>
+    public List<string> Arguments { get; set; } = new();
+
+    /// <summary>
+    /// When true the session sees only the generated ArcGIS Pro MCP config.
+    /// Off by default so the user keeps their own MCP servers.
+    /// </summary>
+    public bool StrictMcpConfig { get; set; }
+
+    public string FontFamily { get; set; } = "Cascadia Mono, Consolas, monospace";
+
+    public double FontSize { get; set; } = 13;
+
+    public double LineHeight { get; set; } = 1.35;
 }
 
 public static class BridgeAuditLog

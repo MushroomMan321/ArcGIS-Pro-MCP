@@ -19,6 +19,52 @@
     <Content Include="Config.daml" />
   </ItemGroup>
 
+  <!--
+    Assets for the Claude pane's terminal. They are embedded rather than copied
+    beside the assembly so that scripts/package-addin.ps1 keeps working
+    unchanged: it stages loose files from the build output and would not pick up
+    a nested folder. The add-in unpacks them to a per-user folder at runtime and
+    serves them to the web view through a virtual host mapping.
+
+    LogicalName is set explicitly because the default naming flattens directory
+    separators into dots, which makes vendor/xterm.js and vendor.xterm.js
+    indistinguishable when rebuilding the paths on extraction.
+  -->
+  <ItemGroup>
+    <None Remove="TerminalWeb\**" />
+    <EmbeddedResource Include="TerminalWeb\terminal.html" LogicalName="TerminalWeb/terminal.html" />
+    <EmbeddedResource Include="TerminalWeb\terminal.css" LogicalName="TerminalWeb/terminal.css" />
+    <EmbeddedResource Include="TerminalWeb\terminal.js" LogicalName="TerminalWeb/terminal.js" />
+    <EmbeddedResource Include="TerminalWeb\vendor\xterm.js" LogicalName="TerminalWeb/vendor/xterm.js" />
+    <EmbeddedResource Include="TerminalWeb\vendor\xterm.css" LogicalName="TerminalWeb/vendor/xterm.css" />
+    <EmbeddedResource Include="TerminalWeb\vendor\addon-fit.js" LogicalName="TerminalWeb/vendor/addon-fit.js" />
+    <EmbeddedResource Include="TerminalWeb\vendor\addon-web-links.js" LogicalName="TerminalWeb/vendor/addon-web-links.js" />
+  </ItemGroup>
+
+  <!--
+    ArcGIS Pro hosts WebView2 itself, so link against the copies it ships. A
+    NuGet reference would put a second set of assemblies in the add-in output
+    and risk binding against a different version than the one Pro has already
+    loaded into the process. The package is only used where Pro does not ship
+    them.
+  -->
+  <ItemGroup Condition="Exists('$(ArcGISProBinDir)Microsoft.Web.WebView2.Wpf.dll')">
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>$(ArcGISProBinDir)Microsoft.Web.WebView2.Core.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Wpf">
+      <HintPath>$(ArcGISProBinDir)Microsoft.Web.WebView2.Wpf.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(ArcGISProBinDir)Microsoft.Web.WebView2.Wpf.dll')">
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="ArcGIS.Core">
       <HintPath>$(ArcGISProBinDir)ArcGIS.Core.dll</HintPath>

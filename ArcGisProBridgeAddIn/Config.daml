@@ -16,14 +16,24 @@
       </tabs>
       <groups>
         <group id="ArcGisProBridgeAddIn_Group" caption="Bridge" appearsOnAddInTab="true">
+          <button refID="ArcGisProBridgeAddIn_ClaudePaneButton" size="large" />
           <button refID="ArcGisProBridgeAddIn_StatusButton" size="large" />
         </group>
       </groups>
       <controls>
+        <button id="ArcGisProBridgeAddIn_ClaudePaneButton" caption="Claude" className="ClaudePaneButton" loadOnClick="true" smallImage="GenericButtonPurple16" largeImage="GenericButtonPurple32">
+          <tooltip heading="Claude">Opens Claude Code in a dock pane, connected to this ArcGIS Pro session.<disabledText /></tooltip>
+        </button>
         <button id="ArcGisProBridgeAddIn_StatusButton" caption="Bridge Status" className="StatusButton" loadOnClick="true" smallImage="GenericButtonBlue16" largeImage="GenericButtonBlue32">
           <tooltip heading="ArcGIS Pro MCP Bridge">Shows the local MCP bridge status.<disabledText /></tooltip>
         </button>
       </controls>
+      <dockPanes>
+        <!-- Docked beside the map by default, where a chat-shaped pane belongs. -->
+        <dockPane id="ArcGisProBridgeAddIn_ClaudePane" caption="Claude" className="Pane.ClaudePaneViewModel" dock="group" dockWith="esri_core_contentsDockPane">
+          <content className="Pane.ClaudePaneView" />
+        </dockPane>
+      </dockPanes>
     </insertModule>
   </modules>
 </ArcGIS>

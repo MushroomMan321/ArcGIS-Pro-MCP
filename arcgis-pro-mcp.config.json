@@ -31,5 +31,16 @@
     "defaultMs": 10000,
     "maxMs": 120000
   },
-  "auditLogPath": null
+  "auditLogPath": null,
+  "claudePane": {
+    "enabled": true,
+    "executablePath": null,
+    "serverPath": null,
+    "workingDirectory": null,
+    "arguments": [],
+    "strictMcpConfig": false,
+    "fontFamily": "Cascadia Mono, Consolas, monospace",
+    "fontSize": 13,
+    "lineHeight": 1.35
+  }
 }
