@@ -44,9 +44,9 @@ Terms are scoped per engagement rather than sold off a price list, because
 deployments differ in seat count, support expectations, and how much
 configuration and integration work is involved.
 
-To start a conversation, reach out through **[dot.cards/jcparker](https://dot.cards/jcparker)**
-or open an issue on this repository with the `licensing` label. Useful context to
-include:
+To start a conversation, open an issue on this repository. If you reached this
+project through a referral or a contact card, use the details you already have.
+Useful context to include:
 
 - What your organization does, and roughly how many analysts would use it
 - Which ArcGIS Pro version and deployment model you are on
